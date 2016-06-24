@@ -9,6 +9,7 @@ defmodule ExJsonSchema.Schema do
 
   alias ExJsonSchema.Schema.Draft4
   alias ExJsonSchema.Schema.Root
+  require Logger
 
   @type resolved :: %{String.t => ExJsonSchema.json_value | (Root.t -> {Root.t, resolved})}
 
@@ -93,10 +94,12 @@ defmodule ExJsonSchema.Schema do
 
   defp resolve_property(root, tuple, _), do: {root, tuple}
 
+  # 解引用(空)
   defp resolve_ref(root, "#") do
     {root, &root_schema_resolver/1}
   end
 
+  # 解引用
   defp resolve_ref(root, ref) do
     [url | fragments] = String.split(ref, "#")
     {root, resolver} = root_and_resolver_for_url(root, fragments, url)
@@ -104,18 +107,22 @@ defmodule ExJsonSchema.Schema do
     {root, resolver}
   end
 
+  # url为空 relative的
   defp root_and_resolver_for_url(root, fragments, "") do
     {root, relative_resolver(fragments)}
   end
 
+  # cache该url上的schema 解剩余引用
   defp root_and_resolver_for_url(root, fragments, url) do
     {resolve_and_cache_remote_schema(root, url),
       url_with_relative_ref_resolver(url, relative_resolver(fragments))}
   end
 
+  # 解剩余引用 ["/xxxxx"]
   defp relative_resolver([fragment = "/" <> _]), do: relative_ref_resolver(fragment)
   defp relative_resolver(_), do: &root_schema_resolver/1
 
+  # 返回resolver函数
   defp relative_ref_resolver(ref) do
     ["" | keys] = unescaped_ref_segments(ref)
     keys = Enum.map keys, fn key ->
@@ -129,6 +136,7 @@ defmodule ExJsonSchema.Schema do
     fn root -> {root, get_in(root.schema, keys)} end
   end
 
+  # 返回resolver函数
   defp url_with_relative_ref_resolver(url, relative_ref_resolver) do
     fn root ->
       remote_schema = root.refs[url]
@@ -144,11 +152,13 @@ defmodule ExJsonSchema.Schema do
     if root.refs[url], do: root, else: fetch_and_resolve_remote_schema(root, url)
   end
 
+  # 获取远程schema(草案)
   defp fetch_and_resolve_remote_schema(root, url)
       when url == @current_draft_schema_url or url == @draft4_schema_url do
     resolve_remote_schema(root, url, Draft4.schema)
   end
 
+  # 获取远程schema
   defp fetch_and_resolve_remote_schema(root, url) do
     resolve_remote_schema(root, url, remote_schema_resolver.(url))
   end
@@ -160,10 +170,12 @@ defmodule ExJsonSchema.Schema do
     root_with_ref(root, url, resolved_root.schema)
   end
 
+  # 把ref合进去
   defp root_with_ref(root, url, ref) do
     %{root | refs: Map.put(root.refs, url, ref)}
   end
 
+  # 从环境变量中获取处理函数
   defp remote_schema_resolver do
     Application.get_env(:ex_json_schema, :remote_schema_resolver)
   end
